@@ -114,7 +114,7 @@ fun HomeScreen(
 // ---------- Header ----------
 
 @Composable
-private fun HomeHeader(onSettingsClick: () -> Unit) {
+private fun HomeHeader(onThemeToggle: () -> Unit) {
     val c = VaniTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -130,17 +130,17 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         }
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("VANI", color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("Voice Controller", color = c.textSecondary, fontSize = 12.sp)
+            Text("VANI", color = c.textPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+//            Text("Voice Controller", color = c.textSecondary, fontSize = 12.sp)
         }
-        Icon(
-            Icons.Filled.Settings,
-            contentDescription = "Settings",
-            tint = c.textSecondary,
-            modifier = Modifier
-                .size(26.dp)
-                .clickable(onClick = onSettingsClick),
-        )
+        IconButton(onClick = onThemeToggle) {
+            Icon(
+                imageVector = if (c.isDark) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                contentDescription = "Toggle theme",
+                tint = c.textSecondary,
+                modifier = Modifier.size(26.dp),
+            )
+        }
     }
 }
 
