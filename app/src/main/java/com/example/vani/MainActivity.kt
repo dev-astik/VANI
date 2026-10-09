@@ -31,6 +31,16 @@ import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveable
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.example.vani.ui.overlay.OverlayManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +85,22 @@ private fun BottomTab.route() = when (this) {
     BottomTab.Settings -> Routes.SETTINGS
 }
 
+val context = LocalContext.current
+val micPermission = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+) { granted -> if (granted) OverlayManager.show(context) }
+
+fun startVoice() {
+    if (!Settings.canDrawOverlays(context)) {
+        context.startActivity(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+        )
+        return
+    }
+    val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+    if (hasMic) OverlayManager.show(context) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+}
 @Composable
 fun VaniApp(onToggleTheme: () -> Unit) {
     val navController = rememberNavController()
@@ -103,8 +129,8 @@ fun VaniApp(onToggleTheme: () -> Unit) {
         ) {
             composable(Routes.HOME) {
                 HomeScreen(
+                    onMicClick = { startVoice() },
                     onThemeToggle = onToggleTheme,
-//                    onSettingsClick = { navigateTo(Routes.SETTINGS) },
                     onRecentClick = { navigateTo(Routes.HISTORY) },
                 )
             }
