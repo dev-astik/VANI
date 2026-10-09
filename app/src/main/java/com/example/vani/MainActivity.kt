@@ -1,46 +1,44 @@
 package com.example.vani
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.example.vani.ui.components.VaniBottomBar
-import com.example.vani.ui.screens.HomeScreen
-import com.example.vani.ui.screens.HistoryScreen
-import com.example.vani.ui.screens.SettingsScreen
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.vani.ui.components.BottomTab
-import com.example.vani.ui.screens.CommandsScreen
-import com.example.vani.ui.theme.VaniTheme
-import androidx.activity.SystemBarStyle
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.saveable.rememberSaveable
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import com.example.vani.ui.overlay.OverlayManager
+import com.example.vani.ui.components.BottomTab
+import com.example.vani.ui.components.VaniBottomBar
+import com.example.vani.ui.screens.CommandsScreen
+import com.example.vani.ui.screens.HistoryScreen
+import com.example.vani.ui.screens.HomeScreen
+import com.example.vani.ui.screens.SettingsScreen
+import com.example.vani.ui.theme.VaniTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,24 +83,29 @@ private fun BottomTab.route() = when (this) {
     BottomTab.Settings -> Routes.SETTINGS
 }
 
-val context = LocalContext.current
-val micPermission = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestPermission()
-) { granted -> if (granted) OverlayManager.show(context) }
-
-fun startVoice() {
-    if (!Settings.canDrawOverlays(context)) {
-        context.startActivity(
-            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-        )
-        return
-    }
-    val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-    if (hasMic) OverlayManager.show(context) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-}
 @Composable
 fun VaniApp(onToggleTheme: () -> Unit) {
+    val context = LocalContext.current
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) OverlayManager.show(context) }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    fun startVoice() {
+        if (!Settings.canDrawOverlays(context)) {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    "package:${context.packageName}".toUri(),
+                )
+            )
+            return
+        }
+        val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        if (hasMic) OverlayManager.show(context) else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -136,15 +139,7 @@ fun VaniApp(onToggleTheme: () -> Unit) {
             }
             composable(Routes.COMMANDS) { CommandsScreen() }
             composable(Routes.HISTORY) { HistoryScreen() }
-            composable(Routes.SETTINGS) { SettingsScreen()}
+            composable(Routes.SETTINGS) { SettingsScreen() }
         }
-    }
-}
-
-/** Temporary screen until History and Settings are built. */
-@Composable
-private fun PlaceholderScreen(title: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(title, color = VaniTheme.colors.textPrimary)
     }
 }

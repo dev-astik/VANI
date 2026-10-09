@@ -1,4 +1,6 @@
+
 package com.example.vani.ui.overlay
+
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
@@ -7,102 +9,188 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
+
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
+
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
-import com.example.vani.ui.overlay.ListeningOverlay
-import com.example.vani.ui.overlay.ListeningPhase
-import com.example.vani.ui.overlay.ListeningUiState
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+
 import com.example.vani.ui.theme.VaniTheme
-import com.example.vani.voice.VoiceListener
 
 /**
- * Shows / hides the floating "Listening" card on top of any app.
- * Call [show] from the mic button now, and from the wake-word service ("Hey VANI") later.
+ * Displays the floating VANI listening overlay.
+ *
+ * Call show() after the overlay permission and microphone
+ * permission have been granted.
  */
 object OverlayManager {
 
-    /** Plug your real command execution here. Return true if the command worked. */
-    var commandHandler: (String) -> Boolean = { true }
+    /**
+     * Connect this handler to your actual command executor.
+     * Return true only when the command succeeds.
+     */
+    var commandHandler: (String) -> Boolean = { false }
 
     private val handler = Handler(Looper.getMainLooper())
+
     private var windowManager: WindowManager? = null
     private var composeView: ComposeView? = null
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private var voiceListener: VoiceListener? = null
+
     private var uiState by mutableStateOf(ListeningUiState())
 
-    fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+    fun canDrawOverlays(context: Context): Boolean {
+        return Settings.canDrawOverlays(context)
+    }
 
     fun show(context: Context) {
+        // WindowManager and Compose UI operations belong
+        // on the main thread.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { show(context.applicationContext) }
+            return
+        }
+
+        // If the overlay already exists, restart listening.
         if (composeView != null) {
             startListening()
             return
         }
-        val app = context.applicationContext
-        if (!canDrawOverlays(app)) return
 
-        val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val owner = OverlayLifecycleOwner().also { it.start() }
+        val appContext = context.applicationContext
 
-        val view = ComposeView(app).apply {
-            ViewTreeLifecycleOwner.set(this, owner)
-            ViewTreeViewModelStoreOwner.set(this, owner)
-            ViewTreeSavedStateRegistryOwner.set(this, owner)
-            setContent {
-                VaniTheme(darkTheme = isSystemInDarkTheme()) {
-                    ListeningOverlay(
-                        state = uiState,
-                        onClose = { hide() },
-                        onRetry = { startListening() },
-                    )
-                }
+        if (!canDrawOverlays(appContext)) {
+            return
+        }
+
+        val wm = appContext.getSystemService(
+            Context.WINDOW_SERVICE
+        ) as WindowManager
+
+        val owner = OverlayLifecycleOwner()
+        owner.start()
+
+        val view = ComposeView(appContext)
+
+        view.setViewTreeLifecycleOwner(owner)
+        view.setViewTreeViewModelStoreOwner(owner)
+        view.setViewTreeSavedStateRegistryOwner(owner)
+
+        view.setContent {
+            VaniTheme(
+                darkTheme = isSystemInDarkTheme()
+            ) {
+                ListeningOverlay(
+                    state = uiState,
+                    onClose = { hide() },
+                    onRetry = { startListening() }
+                )
             }
         }
 
-        wm.addView(view, layoutParams())
+        try {
+            wm.addView(view, layoutParams())
+        } catch (exception: Exception) {
+            owner.destroy()
+            return
+        }
+
+        // Store references only after the view is attached.
         windowManager = wm
         composeView = view
         lifecycleOwner = owner
 
         voiceListener = VoiceListener(
-            context = app,
-            onPartial = { text -> uiState = ListeningUiState(ListeningPhase.Listening, text) },
-            onFinal = { text -> handleFinal(text) },
-            onFailure = { fail() },
+            context = appContext,
+            onPartial = { text ->
+                handler.post {
+                    if (composeView != null) {
+                        uiState = ListeningUiState(
+                            ListeningPhase.Listening,
+                            text
+                        )
+                    }
+                }
+            },
+            onFinal = { text ->
+                handler.post {
+                    if (composeView != null) {
+                        handleFinal(text)
+                    }
+                }
+            },
+            onFailure = {
+                handler.post {
+                    if (composeView != null) {
+                        fail()
+                    }
+                }
+            }
         )
+
         startListening()
     }
 
     fun hide() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { hide() }
+            return
+        }
+
+        // Cancel pending hide and processing callbacks.
         handler.removeCallbacksAndMessages(null)
+
         voiceListener?.stop()
         voiceListener = null
-        composeView?.let { runCatching { windowManager?.removeView(it) } }
+
+        val view = composeView
+        val wm = windowManager
+
         composeView = null
         windowManager = null
+
+        if (view != null && wm != null) {
+            try {
+                wm.removeView(view)
+            } catch (_: IllegalArgumentException) {
+                // The view may already have been detached.
+            } catch (_: Exception) {
+                // Prevent cleanup errors from crashing the app.
+            }
+        }
+
         lifecycleOwner?.destroy()
         lifecycleOwner = null
-    }
 
-    // ---------- internal flow ----------
+        uiState = ListeningUiState()
+    }
 
     private fun startListening() {
         handler.removeCallbacksAndMessages(null)
-        uiState = ListeningUiState(ListeningPhase.Listening)
+
+        if (composeView == null || voiceListener == null) {
+            return
+        }
+
+        uiState = ListeningUiState(
+            ListeningPhase.Listening
+        )
+
         voiceListener?.start()
     }
 
@@ -111,26 +199,57 @@ object OverlayManager {
             fail()
             return
         }
-        uiState = ListeningUiState(ListeningPhase.Processing, text)
+
+        uiState = ListeningUiState(
+            ListeningPhase.Processing,
+            text
+        )
+
         handler.postDelayed({
-            val ok = commandHandler(text)
-            uiState = ListeningUiState(if (ok) ListeningPhase.Success else ListeningPhase.Error, text)
-            handler.postDelayed({ hide() }, if (ok) 1500L else 4000L)
+            if (composeView == null) return@postDelayed
+
+            val succeeded = try {
+                commandHandler(text)
+            } catch (_: Exception) {
+                false
+            }
+
+            uiState = ListeningUiState(
+                if (succeeded) {
+                    ListeningPhase.Success
+                } else {
+                    ListeningPhase.Error
+                },
+                text
+            )
+
+            handler.postDelayed(
+                { hide() },
+                if (succeeded) 1500L else 4000L
+            )
         }, 600L)
     }
 
     private fun fail() {
-        uiState = ListeningUiState(ListeningPhase.Error)
-        handler.postDelayed({ hide() }, 4000L)
+        uiState = ListeningUiState(
+            ListeningPhase.Error
+        )
+
+        handler.postDelayed(
+            { hide() },
+            4000L
+        )
     }
 
     private fun layoutParams(): WindowManager.LayoutParams {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val type =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -138,36 +257,85 @@ object OverlayManager {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.BOTTOM }
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+        }
     }
 }
 
-/** A ComposeView outside an Activity needs its own lifecycle, saved-state and ViewModel owners. */
-private class OverlayLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
-    private val registry = LifecycleRegistry(this)
-    private val savedStateController = SavedStateRegistryController.create(this)
+
+/**
+ * Provides lifecycle, saved-state and ViewModel owners
+ * for a ComposeView displayed outside an Activity.
+ */
+private class OverlayLifecycleOwner :
+    LifecycleOwner,
+    ViewModelStoreOwner,
+    SavedStateRegistryOwner {
+
+    private val lifecycleRegistry = LifecycleRegistry(this)
+
+    private val savedStateController =
+        SavedStateRegistryController.create(this)
+
     private val store = ViewModelStore()
 
-    override val lifecycle: Lifecycle get() = registry
-    override val viewModelStore: ViewModelStore get() = store
-    override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val viewModelStore: ViewModelStore
+        get() = store
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateController.savedStateRegistry
 
     init {
         savedStateController.performAttach()
         savedStateController.performRestore(null)
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+
+        lifecycleRegistry.handleLifecycleEvent(
+            Lifecycle.Event.ON_CREATE
+        )
     }
 
     fun start() {
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        lifecycleRegistry.handleLifecycleEvent(
+            Lifecycle.Event.ON_START
+        )
+
+        lifecycleRegistry.handleLifecycleEvent(
+            Lifecycle.Event.ON_RESUME
+        )
     }
 
     fun destroy() {
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        if (lifecycleRegistry.currentState.isAtLeast(
+                Lifecycle.State.RESUMED
+            )
+        ) {
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_PAUSE
+            )
+        }
+
+        if (lifecycleRegistry.currentState.isAtLeast(
+                Lifecycle.State.STARTED
+            )
+        ) {
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_STOP
+            )
+        }
+
+        if (lifecycleRegistry.currentState !=
+            Lifecycle.State.DESTROYED
+        ) {
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_DESTROY
+            )
+        }
+
         store.clear()
     }
 }
