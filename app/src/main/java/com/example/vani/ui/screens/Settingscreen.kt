@@ -40,6 +40,9 @@ import androidx.compose.ui.unit.sp
 import com.example.vani.ui.components.IconTile
 import com.example.vani.ui.components.VaniCard
 import com.example.vani.ui.theme.VaniTheme
+import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 
 // ---------- Models ----------
 
@@ -66,6 +69,29 @@ private val aboutSettings = listOf(
 )
 
 // ---------- Screen ----------
+
+@Composable
+private fun WakeWordCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val c = VaniTheme.colors
+    VaniCard {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconTile(Icons.Filled.Hearing, c.torchBg, c.torch, size = 40.dp, cornerRadius = 12.dp, iconSize = 22.dp)
+            Spacer(Modifier.size(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Hey VANI", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text("Wake word, listens in background", color = c.textSecondary, fontSize = 12.sp)
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
+            )
+        }
+    }
+}
 
 @Composable
 fun SettingsScreen(

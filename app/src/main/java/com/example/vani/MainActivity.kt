@@ -39,6 +39,10 @@ import com.example.vani.ui.screens.HistoryScreen
 import com.example.vani.ui.screens.HomeScreen
 import com.example.vani.ui.screens.SettingsScreen
 import com.example.vani.ui.theme.VaniTheme
+import android.widget.Toast
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import com.example.vani.ui.wakeword.WakeWordController
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,6 +93,53 @@ fun VaniApp(onToggleTheme: () -> Unit) {
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) OverlayManager.show(context) }
+
+    var wakeEnabled by remember { mutableStateOf(WakeWordController.isEnabled(context)) }
+
+    fun hasPermission(p: String) =
+        ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+
+    val wakePermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            WakeWordController.start(context)
+            wakeEnabled = true
+        } else {
+            wakeEnabled = false
+        }
+    }
+
+    fun setWakeWord(enable: Boolean) {
+        if (!enable) {
+            WakeWordController.stop(context)
+            wakeEnabled = false
+            return
+        }
+        if (!Settings.canDrawOverlays(context)) {
+            Toast.makeText(context, "Allow “Display over other apps”, then turn on Hey VANI again", Toast.LENGTH_LONG).show()
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+            )
+            return
+        }
+        val needed = buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missing = needed.filterNot { hasPermission(it) }
+        if (missing.isEmpty()) {
+            WakeWordController.start(context)
+            wakeEnabled = true
+        } else {
+            wakePermissions.launch(missing.toTypedArray())
+        }
+    }
+
+// restart the service if it was on and the app process was recreated
+    LaunchedEffect(Unit) {
+        if (wakeEnabled && hasPermission(Manifest.permission.RECORD_AUDIO)) WakeWordController.start(context)
+    }
 
     @RequiresApi(Build.VERSION_CODES.M)
     fun startVoice() {

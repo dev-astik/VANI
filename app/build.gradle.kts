@@ -40,7 +40,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
     // Compose (BOM declared ONCE here)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
