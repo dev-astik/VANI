@@ -1,4 +1,5 @@
 package com.example.vani.ui.overlay
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
@@ -56,6 +57,7 @@ enum class ListeningPhase { Listening, Processing, Success, Error }
 data class ListeningUiState(
     val phase: ListeningPhase = ListeningPhase.Listening,
     val transcript: String = "",
+    val message: String = "",
 )
 
 // ---------- Floating card ----------
@@ -115,8 +117,8 @@ fun ListeningOverlay(
                 text = when (state.phase) {
                     ListeningPhase.Listening -> "Listening…"
                     ListeningPhase.Processing -> "Working on it…"
-                    ListeningPhase.Success -> "Done"
-                    ListeningPhase.Error -> "Didn't catch that"
+                    ListeningPhase.Success -> state.message.ifBlank { "Done" }
+                    ListeningPhase.Error -> state.message.ifBlank { "Didn't catch that" }
                 },
                 color = c.textPrimary,
                 fontSize = 20.sp,

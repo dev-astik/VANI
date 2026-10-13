@@ -1,0 +1,4 @@
+HELLO VANI :2.0 #0.15 @Hello_VANI
+HELLO VAANI :2.0 #0.15 @Hello_VANI
+HELLO VAHNI :2.0 #0.15 @Hello_VANI
+HELLO WORLD :1.5 #0.25 @Hello_World

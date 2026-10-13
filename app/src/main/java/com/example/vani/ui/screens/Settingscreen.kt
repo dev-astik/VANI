@@ -1,5 +1,11 @@
 package com.example.vani.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
@@ -26,23 +33,32 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.vani.ui.components.IconTile
 import com.example.vani.ui.components.VaniCard
 import com.example.vani.ui.theme.VaniTheme
-import androidx.compose.material.icons.filled.Hearing
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import com.example.vani.ui.wakeword.WakeWordController
+import com.example.vani.ui.wakeword.WakeWordStatus
 
 // ---------- Models ----------
 
@@ -68,30 +84,109 @@ private val aboutSettings = listOf(
     SettingItem(SettingsAction.About, "About VANI", "Version 1.0.0", Icons.Filled.Info),
 )
 
-// ---------- Screen ----------
+// ---------- Wake word card ----------
 
 @Composable
-private fun WakeWordCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+private fun WakeWordCard() {
+    Log.d("VaniWake", "WakeWordCard composed")
     val c = VaniTheme.colors
-    VaniCard {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconTile(Icons.Filled.Hearing, c.torchBg, c.torch, size = 40.dp, cornerRadius = 12.dp, iconSize = 22.dp)
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Hey VANI", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Text("Wake word, listens in background", color = c.textSecondary, fontSize = 12.sp)
+    val context = LocalContext.current
+
+    // ON by default (WakeWordController.isEnabled returns true until the user turns it off)
+    var enabled by remember { mutableStateOf(WakeWordController.isEnabled(context)) }
+
+    val permissions = remember {
+        buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }.toTypedArray()
+    }
+
+    fun hasMicPermission() =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (result[Manifest.permission.RECORD_AUDIO] == true) {
+            Log.d("VaniWake", "Mic permission granted, starting service")
+            WakeWordController.start(context)
+            enabled = true
+        } else {
+            Log.d("VaniWake", "Mic permission denied")
+            WakeWordStatus.text = "Error: microphone permission denied"
+            WakeWordController.stop(context)
+            enabled = false
+        }
+    }
+
+    // Turn on automatically the first time this card appears
+    LaunchedEffect(Unit) {
+        if (enabled) {
+            if (hasMicPermission()) {
+                Log.d("VaniWake", "Auto-start: permission already granted")
+                WakeWordController.start(context)
+            } else {
+                Log.d("VaniWake", "Auto-start: asking for permission")
+                permissionLauncher.launch(permissions)
             }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
-            )
+        }
+    }
+
+    VaniCard {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconTile(Icons.Filled.Hearing, c.torchBg, c.torch, size = 40.dp, cornerRadius = 12.dp, iconSize = 22.dp)
+                Spacer(Modifier.size(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Hello VANI", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (enabled) WakeWordStatus.text else "Wake word, listens in background",
+                        color = c.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { on ->
+                        Log.d("VaniWake", "Toggle pressed: $on")
+                        if (on) {
+                            if (hasMicPermission()) {
+                                WakeWordController.start(context)
+                                enabled = true
+                            } else {
+                                permissionLauncher.launch(permissions)
+                            }
+                        } else {
+                            WakeWordController.stop(context)
+                            enabled = false
+                        }
+                    },
+                    colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
+                )
+            }
+            if (enabled) {
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { WakeWordStatus.micLevel },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = c.primary,
+                    trackColor = c.divider,
+                )
+                if (WakeWordStatus.lastHeard.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Last heard: ${WakeWordStatus.lastHeard}", color = c.textSecondary, fontSize = 11.sp)
+                }
+            }
         }
     }
 }
+
+// ---------- Screen ----------
 
 @Composable
 fun SettingsScreen(
@@ -119,6 +214,9 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
 
         ProfileCard(userName, onProfileClick)
+
+        SectionTitle("Voice Activation")
+        WakeWordCard()
 
         SectionTitle("App Settings")
         SettingsGroup(appSettings, onSettingClick)
@@ -215,14 +313,3 @@ private fun SettingRow(item: SettingItem, onClick: () -> Unit) {
 
 // ---------- Previews ----------
 
-@Preview(showBackground = true, widthDp = 393, heightDp = 780)
-@Composable
-private fun SettingsLightPreview() {
-    VaniTheme(darkTheme = false) { SettingsScreen() }
-}
-
-@Preview(showBackground = true, widthDp = 393, heightDp = 780)
-@Composable
-private fun SettingsDarkPreview() {
-    VaniTheme(darkTheme = true) { SettingsScreen() }
-}

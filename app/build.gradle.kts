@@ -41,6 +41,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+    implementation(files("libs/sherpa-onnx-1.13.8.aar"))
     // Compose (BOM declared ONCE here)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

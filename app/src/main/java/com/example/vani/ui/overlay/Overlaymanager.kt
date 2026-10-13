@@ -1,11 +1,13 @@
 package com.example.vani.ui.overlay
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -24,22 +26,23 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.vani.ui.commands.CommandProcessor
+import com.example.vani.ui.commands.CommandResult
 import com.example.vani.ui.theme.VaniTheme
 import com.example.vani.ui.overlay.VoiceListener
 
 /**
- * Displays the floating VANI listening overlay.
- *
- * Call show() after the overlay permission and microphone permission have been granted.
+ * Displays the floating VANI listening overlay and runs the spoken command.
  * Used by the mic button and by the "Hey VANI" wake word service.
  */
 object OverlayManager {
 
-    /**
-     * Connect this handler to your actual command executor.
-     * Return true only when the command succeeds.
-     */
-    var commandHandler: (String) -> Boolean = { false }
+    private const val TAG = "VaniOverlay"
+
+    /** Runs the recognized text. Default: CommandProcessor (torch, volume, open app, ...). */
+    var commandHandler: (Context, String) -> CommandResult = { context, text ->
+        CommandProcessor.handle(context, text)
+    }
 
     /** Called after the overlay has been removed (the wake word service uses it to listen again). */
     var onDismissed: (() -> Unit)? = null
@@ -51,6 +54,8 @@ object OverlayManager {
     private var windowManager: WindowManager? = null
     private var composeView: ComposeView? = null
     private var lifecycleOwner: OverlayLifecycleOwner? = null
+    // VoiceListener only keeps the application context, so this is not a real leak
+    @SuppressLint("StaticFieldLeak")
     private var voiceListener: VoiceListener? = null
 
     private var uiState by mutableStateOf(ListeningUiState())
@@ -95,7 +100,8 @@ object OverlayManager {
 
         try {
             wm.addView(view, layoutParams())
-        } catch (ignored: Exception) {
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not add the overlay window", error)
             owner.destroy()
             return
         }
@@ -116,7 +122,7 @@ object OverlayManager {
             },
             onFinal = { text ->
                 handler.post {
-                    if (composeView != null) handleFinal(text)
+                    if (composeView != null) handleFinal(appContext, text)
                 }
             },
             onFailure = {
@@ -152,10 +158,10 @@ object OverlayManager {
         if (view != null && wm != null) {
             try {
                 wm.removeView(view)
-            } catch (ignored: IllegalArgumentException) {
-                // The view may already have been detached.
-            } catch (ignored: Exception) {
-                // Prevent cleanup errors from crashing the app.
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "Overlay was already removed", error)
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not remove the overlay", error)
             }
         }
 
@@ -176,7 +182,7 @@ object OverlayManager {
         voiceListener?.start()
     }
 
-    private fun handleFinal(text: String) {
+    private fun handleFinal(context: Context, text: String) {
         if (text.isBlank()) {
             fail()
             return
@@ -187,18 +193,20 @@ object OverlayManager {
         handler.postDelayed({
             if (composeView == null) return@postDelayed
 
-            val succeeded = try {
-                commandHandler(text)
-            } catch (ignored: Exception) {
-                false
+            val result = try {
+                commandHandler(context, text)
+            } catch (error: Exception) {
+                Log.e(TAG, "Command failed", error)
+                CommandResult(false, "Something went wrong")
             }
 
             uiState = ListeningUiState(
-                if (succeeded) ListeningPhase.Success else ListeningPhase.Error,
-                text,
+                phase = if (result.success) ListeningPhase.Success else ListeningPhase.Error,
+                transcript = text,
+                message = result.message,
             )
 
-            handler.postDelayed({ hide() }, if (succeeded) 1500L else 4000L)
+            handler.postDelayed({ hide() }, if (result.success) 1500L else 4000L)
         }, 600L)
     }
 
