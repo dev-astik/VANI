@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,21 +18,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -46,11 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -72,10 +64,7 @@ private data class SettingItem(
 )
 
 private val appSettings = listOf(
-    SettingItem(SettingsAction.Theme, "Light / Dark Theme", "System theme", Icons.Filled.DarkMode),
     SettingItem(SettingsAction.Voice, "Voice & Speech", "Language, voice, recognition", Icons.Filled.Mic),
-    SettingItem(SettingsAction.Notifications, "Notifications", "Command alerts, status", Icons.Filled.Notifications),
-    SettingItem(SettingsAction.QuickActions, "Quick Actions", "Customize home shortcuts", Icons.Filled.Widgets),
 )
 
 private val aboutSettings = listOf(
@@ -88,7 +77,6 @@ private val aboutSettings = listOf(
 
 @Composable
 private fun WakeWordCard() {
-    Log.d("VaniWake", "WakeWordCard composed")
     val c = VaniTheme.colors
     val context = LocalContext.current
 
@@ -169,18 +157,9 @@ private fun WakeWordCard() {
                     colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
                 )
             }
-            if (enabled) {
-                Spacer(Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    progress = { WakeWordStatus.micLevel },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = c.primary,
-                    trackColor = c.divider,
-                )
-                if (WakeWordStatus.lastHeard.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Last heard: ${WakeWordStatus.lastHeard}", color = c.textSecondary, fontSize = 11.sp)
-                }
+            if (enabled && WakeWordStatus.lastHeard.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Last heard: ${WakeWordStatus.lastHeard}", color = c.textSecondary, fontSize = 11.sp)
             }
         }
     }
@@ -190,8 +169,6 @@ private fun WakeWordCard() {
 
 @Composable
 fun SettingsScreen(
-    userName: String = "Astik",
-    onProfileClick: () -> Unit = {},
     onSettingClick: (SettingsAction) -> Unit = {},
 ) {
     val c = VaniTheme.colors
@@ -211,9 +188,6 @@ fun SettingsScreen(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 2.dp),
         )
-        Spacer(Modifier.height(16.dp))
-
-        ProfileCard(userName, onProfileClick)
 
         SectionTitle("Voice Activation")
         WakeWordCard()
@@ -239,40 +213,6 @@ private fun SectionTitle(text: String) {
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 2.dp),
     )
-}
-
-@Composable
-private fun ProfileCard(name: String, onClick: () -> Unit) {
-    val c = VaniTheme.colors
-    VaniCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .background(Brush.linearGradient(listOf(c.primaryLight, c.primaryDark)), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    name.firstOrNull()?.uppercase() ?: "V",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(name, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("Voice Controller", color = c.textSecondary, fontSize = 12.sp)
-            }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = c.textSecondary)
-        }
-    }
 }
 
 @Composable
@@ -310,6 +250,3 @@ private fun SettingRow(item: SettingItem, onClick: () -> Unit) {
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = c.textSecondary)
     }
 }
-
-// ---------- Previews ----------
-

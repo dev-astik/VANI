@@ -39,13 +39,26 @@ class WakeWordDetector(
         thread = Thread({ safeRun() }, "vani-wake-word").also { it.start() }
     }
 
+
+    @Synchronized
     fun release() {
         running = false
-        thread?.join(1500)
-        thread = null
-        runCatching { spotter?.release() }
-        spotter = null
+
+        val worker = thread
+        if (worker != null && worker !== Thread.currentThread()) {
+            worker.join(3000)
+        }
+
+        // Release the model only after the worker exits.
+        if (worker == null || !worker.isAlive) {
+            thread = null
+            runCatching {
+                spotter?.release()
+            }
+            spotter = null
+        }
     }
+
 
     private fun safeRun() {
         try {
@@ -174,7 +187,7 @@ class WakeWordDetector(
             ),
             keywordsFile = "$dir/keywords.txt",
             keywordsScore = 1.5f,
-            keywordsThreshold = 0.25f,
+            keywordsThreshold = 0.20f,
         )
         return KeywordSpotter(assetManager = context.assets, config = config)
     }

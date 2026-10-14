@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">VANI</string>
+    <string name="accessibility_service_description">Lets VANI go back, scroll,
+        and open recent apps or the notification panel when you ask by voice.
+        VANI does not read your screen.
+    </string>
 </resources>

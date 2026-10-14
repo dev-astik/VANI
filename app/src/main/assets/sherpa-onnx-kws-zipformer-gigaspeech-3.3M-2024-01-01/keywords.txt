@@ -1,4 +1,7 @@
-▁HE LL O ▁VA N I :2.0 #0.15 @Hello_VANI
-▁HE LL O ▁VA N E :2.0 #0.15 @Hello_VANI
-▁HE LL O ▁VA NE :2.0 #0.15 @Hello_VANI
-▁HE LL O ▁WORLD :1.5 #0.25 @Hello_World
+
+▁HE Y ▁VA N I :2.0 #0.20 @Hey_VANI
+▁HE LL O ▁VA N I :2.0 #0.20 @Hello_VANI
+▁HE LL O ▁VA AN I :2.0 #0.20 @Hello_VAANI
+▁HE LL O ▁CON T RO LL ER :2.0 #0.20 @Hello_Controller
+▁HE Y ▁CON T RO LL ER :2.0 #0.20 @Hey_Controller
+▁HE Y ▁VA AN I :2.0 #0.20 @Hey_VAANI
