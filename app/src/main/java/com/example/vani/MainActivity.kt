@@ -3,7 +3,6 @@ package com.example.vani
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -12,12 +11,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -31,22 +30,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.vani.ui.overlay.OverlayManager
 import com.example.vani.ui.components.BottomTab
 import com.example.vani.ui.components.VaniBottomBar
+import com.example.vani.ui.overlay.OverlayManager
 import com.example.vani.ui.screens.CommandsScreen
 import com.example.vani.ui.screens.HistoryScreen
 import com.example.vani.ui.screens.HomeScreen
 import com.example.vani.ui.screens.SettingsScreen
 import com.example.vani.ui.theme.VaniTheme
-import android.widget.Toast
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import com.example.vani.ui.wakeword.WakeWordController
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             val systemDark = isSystemInDarkTheme()
             var isDark by rememberSaveable { mutableStateOf(systemDark) }
@@ -90,58 +86,22 @@ private fun BottomTab.route() = when (this) {
 @Composable
 fun VaniApp(onToggleTheme: () -> Unit) {
     val context = LocalContext.current
+
+    // microphone permission for the mic button
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) OverlayManager.show(context) }
 
-    var wakeEnabled by remember { mutableStateOf(WakeWordController.isEnabled(context)) }
-
-    fun hasPermission(p: String) =
-        ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
-
-    val wakePermissions = rememberLauncherForActivityResult(
+    // contacts + phone permission, so "call ..." and "message ..." work
+    val contactPermissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
-            WakeWordController.start(context)
-            wakeEnabled = true
-        } else {
-            wakeEnabled = false
-        }
-    }
-
-    fun setWakeWord(enable: Boolean) {
-        if (!enable) {
-            WakeWordController.stop(context)
-            wakeEnabled = false
-            return
-        }
-        if (!Settings.canDrawOverlays(context)) {
-            Toast.makeText(context, "Allow “Display over other apps”, then turn on Hey VANI again", Toast.LENGTH_LONG).show()
-            context.startActivity(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
-            )
-            return
-        }
-        val needed = buildList {
-            add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        val missing = needed.filterNot { hasPermission(it) }
-        if (missing.isEmpty()) {
-            WakeWordController.start(context)
-            wakeEnabled = true
-        } else {
-            wakePermissions.launch(missing.toTypedArray())
-        }
-    }
-
-// restart the service if it was on and the app process was recreated
+    ) { }
     LaunchedEffect(Unit) {
-        if (wakeEnabled && hasPermission(Manifest.permission.RECORD_AUDIO)) WakeWordController.start(context)
+        contactPermissions.launch(
+            arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE)
+        )
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
     fun startVoice() {
         if (!Settings.canDrawOverlays(context)) {
             context.startActivity(
